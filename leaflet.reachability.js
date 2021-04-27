@@ -1,6 +1,7 @@
 /*
     Created:        2018-06-12 by James Austin - Trafford Data Lab
     Latest update:  2020-11-27
+    Fork:           by Piero Cena 2021-04-27
     Purpose:        Uses openrouteservice API to create isolines showing areas within reach of certain travel times based on different modes of travel or distance. See https://wiki.openstreetmap.org/wiki/Isochrone for more information
     Dependencies:   Leaflet.js (external library), openrouteservice.org API (requires a key - free service available via registration)
     Licence:        https://github.com/traffordDataLab/leaflet.reachability/blob/master/LICENSE
@@ -85,6 +86,7 @@ L.Control.Reachability = L.Control.extend({
 
         rangeTypeDefault: 'time',                       // Range can be either distance or time - any value other than 'distance' passed to the API is assumed to be 'time'
         rangeIntervalsLabel: 'intervals',               // The 'show intervals?' checkbox label
+        showInterval: false,
 
         // API settings
         apiKey: '',                                     // openrouteservice API key - the service which returns the isoline polygons based on the various options/parameters
@@ -267,9 +269,11 @@ L.Control.Reachability = L.Control.extend({
         this._showInterval = L.DomUtil.create('input', '', this._showIntervalContainer);
         this._showInterval.setAttribute('id', 'rangeInterval');
         this._showInterval.setAttribute('type', 'checkbox');
+        if (this.options.showInterval) this._showInterval.setAttribute('checked', 'checked');
         this._showIntervalLabel = L.DomUtil.create('label', '', this._showIntervalContainer);
         this._showIntervalLabel.setAttribute('for', 'rangeInterval');
         this._showIntervalLabel.innerHTML = this.options.rangeIntervalsLabel;
+        
 
 
         // Select the correct range type button and show the correct range list
@@ -617,11 +621,12 @@ L.Control.Reachability = L.Control.extend({
     _registerDrawRequest: function (e) {
         L.DomEvent.stop(e.originalEvent);     // stop any default actions and propagation from the event
 
-        // Only take action if this is the first event to register - the reset is in _callApi
+        // Only take action if this is the first event to register - the reset is in callApi
         if (!this._drawRequestRegistered) {
             this._drawRequestRegistered = true;
-
-            this._callApi(e.latlng);
+            
+            var rangeType= (this._rangeIsDistance == true ? 'distance' : 'time');
+            this.callApi(e.latlng, this._travelMode, rangeType, this._getRange(), this.options);
         }
     },
 
@@ -648,56 +653,61 @@ L.Control.Reachability = L.Control.extend({
         obj.context._showError(obj.context._drawControl);
         obj.context._deactivateDraw();
     },
+    
+    _getRange: function() {
+        // The next part of the request body depends on the options and values selected by the user
+        var arrRange = [];      // the array to hold either the single range value or multiple values if the intervals have been requested
+        var optionsIndex = 0;   // index of the range collection
+
+        if (this._rangeIsDistance) {
+            if (this._showInterval.checked) {
+                do {
+                    arrRange.push(this._rangeDistanceList[optionsIndex].value);
+                    optionsIndex++;
+                }
+                while (optionsIndex <= this._rangeDistanceList.selectedIndex);
+            }
+            else {
+                arrRange.push(this._rangeDistanceList.value);
+            }
+        }
+        else {
+            if (this._showInterval.checked) {
+                do {
+                    arrRange.push(this._rangeTimeList[optionsIndex].value * 60);
+                    optionsIndex++;
+                }
+                while (optionsIndex <= this._rangeTimeList.selectedIndex);
+            }
+            else {
+                arrRange.push(this._rangeTimeList.value * 60);
+            }
+        }
+        return arrRange;
+    },
 
     // Main function to make the actual call to the API and display the resultant isoline group on the map
-    _callApi: function (latLng) {
+    callApi: function (latLng, travelMode, rangeType, arrRange, _options) {
         // Store the context for use within the API callback
         var context = this;
 
         if (window.XMLHttpRequest) {
             // Start setting up the body of the request which contains most of the parameters
-            var requestBody = '{"locations":[[' + latLng.lng + ',' + latLng.lat + ']],"attributes":[' + this.options.attributes + '],"smoothing":' + this.options.smoothing + ',';
+            var requestBody = '{"locations":[[' + latLng.lng + ',' + latLng.lat + ']],"attributes":[' + _options.attributes + '],"smoothing":' + _options.smoothing + ',';
 
-            // The next part of the request body depends on the options and values selected by the user
-            var arrRange = [];      // the array to hold either the single range value or multiple values if the intervals have been requested
-            var optionsIndex = 0;   // index of the range collection
-
-            if (this._rangeIsDistance) {
-                if (this._showInterval.checked) {
-                    do {
-                        arrRange.push(this._rangeDistanceList[optionsIndex].value);
-                        optionsIndex++;
-                    }
-                    while (optionsIndex <= this._rangeDistanceList.selectedIndex);
-                }
-                else {
-                    arrRange.push(this._rangeDistanceList.value);
-                }
-
-                requestBody += '"range_type":"distance","units":"' + this.options.rangeControlDistanceUnits + '"';
-            }
-            else {
-                if (this._showInterval.checked) {
-                    do {
-                        arrRange.push(this._rangeTimeList[optionsIndex].value * 60);
-                        optionsIndex++;
-                    }
-                    while (optionsIndex <= this._rangeTimeList.selectedIndex);
-                }
-                else {
-                    arrRange.push(this._rangeTimeList.value * 60);
-                }
-
+            if (rangeType == 'distance') {
+                requestBody += '"range_type":"distance","units":"' + _options.rangeControlDistanceUnits + '"';
+            } else {
                 requestBody += '"range_type":"time"';
             }
 
             // The area units are the same no matter whether based on distance or time, and add the range to finished the request body
-            requestBody += ',"area_units":"' + this.options.rangeControlDistanceUnits + '","range":[' + arrRange.toString() + ']}';
+            requestBody += ',"area_units":"' + _options.rangeControlDistanceUnits + '","range":[' + arrRange.toString() + ']}';
 
             // Setup the request object and associated items
             var request = new XMLHttpRequest();
 
-            request.open('POST', 'https://api.openrouteservice.org/v2/isochrones/' + this._travelMode);
+            request.open('POST', 'https://api.openrouteservice.org/v2/isochrones/' + travelMode);
 
             request.setRequestHeader('Content-Type', 'application/geo+json; charset=utf-8');
             request.setRequestHeader('Authorization', this.options.apiKey);

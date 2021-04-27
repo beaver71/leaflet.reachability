@@ -38,14 +38,17 @@
         <div id="map" class="mapFullScreen"></div>
 
         <script src="https://unpkg.com/leaflet@1.3.3/dist/leaflet.js" integrity="sha512-tAGcCfR4Sc5ZP5ZoVz0quoZDYX5aCtEm/eu1KhSLj2c9eFrylXZknQYmxUssFaVJKvvc0dJQixhGjG2yXWiV9Q==" crossorigin=""></script>
-        <script src="https://cdn.jsdelivr.net/gh/trafforddatalab/leaflet.reachability@v2.0.1/leaflet.reachability.min.js"></script>
+        <script src="leaflet.reachability.js"></script>
 
         <script>
             // Example function to style the isoline polygons when they are returned from the API call
             function styleIsolines(feature) {
                 // NOTE: You can do some conditional styling by reading the properties of the feature parameter passed to the function
+                // Get the value of the range property of the feature
+                var rangeVal = feature.properties['Range'];
+                if (feature.properties['Measure'] == 'time') rangeVal = rangeVal * 10;
                 return {
-                    color: '#0073d4',
+                    color: getColourByRange(rangeVal),
                     opacity: 0.5,
                     fillOpacity: 0.2
                 };
@@ -63,6 +66,28 @@
                     fillOpacity: '0.5',
                     opacity: '1'
                 });
+            }
+            
+            function getColourByRange(value) {
+                switch (value) {
+                    case 1:
+                        return '#ff0000';
+                    case 2:
+                        return '#ff2000';
+                    case 5:
+                        return '#ff4000';
+                    case 10:
+                        return '#ff8000';
+                    case 15:
+                        return '#ff9933';
+                    case 30:
+                        return '#ffbf00';
+                    case 50:
+                        return '#ffff00';
+                    default:
+                        return '#00ffff'
+                }
+
             }
 
             // Example function to reset the style of the isoline polygons when the user stops hovering over them
@@ -90,7 +115,7 @@
 
 
             // Create the Leaflet map object
-            var map = L.map('map', { center: [53.4189, -2.33], zoom: 12, minZoom: 10, zoomDelta: 0.25, zoomSnap: 0 });
+            var map = L.map('map', { center: [44.3695992,9.1254192], zoom: 12, minZoom: 10, zoomDelta: 0.25, zoomSnap: 0 });
 
             // Create a Leaflet tile layer object
             var baseLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -124,20 +149,38 @@
                 travelModeButton1StyleClass: 'fa fa-car',
                 travelModeButton2Content: '',
                 travelModeButton2StyleClass: 'fa fa-bicycle',
-                travelModeButton3Content: '',
-                travelModeButton3StyleClass: 'fa fa-male',
-                travelModeButton4Content: '',
-                travelModeButton4StyleClass: 'fa fa-wheelchair-alt'
+                <!-- travelModeButton3Content: '', -->
+                <!-- travelModeButton3StyleClass: 'fa fa-male', -->
+                <!-- travelModeButton4Content: '', -->
+                <!-- travelModeButton4StyleClass: 'fa fa-wheelchair-alt', -->
+                
+                rangeTypeDefault: 'distance',
+                travelModeProfile3: null,   // we don't want the third...
+                travelModeProfile4: null,    // ...or fourth travel mode buttons
+                
+                showInterval: true,
+                
+                rangeControlDistance: [1,2,5,10,15,30,50]
             }).addTo(map);
 
             // Setup error handlers in case there is a problem when calling the API
             map.on('reachability:error', function () {
-                alert('Unfortunately there has been an error calling the API.\nMore details are available in the console.');
+                console.error('Unfortunately there has been an error calling the API.\nMore details are available in the console.');
             });
 
             map.on('reachability:no_data', function () {
-                alert('Unfortunately no data was received from the API.\n');
+                console.error('Unfortunately no data was received from the API.\n');
             });
+            
+            function testApi() {
+                reachabilityControl.callApi(
+                    map.getCenter(),
+                    'driving-car',
+                    'distance',
+                    [1,2,5,10,15,30,50], 
+                    {attributes: '"area","reachfactor","total_pop"', smoothing: 0, rangeControlDistanceUnits: 'km'}
+                );
+            }
         </script>
     </body>
 </html>
