@@ -80,9 +80,9 @@
                         return '#ff8000';
                     case 15:
                         return '#ff9933';
-                    case 30:
+                    case 20:
                         return '#ffbf00';
-                    case 50:
+                    case 30:
                         return '#ffff00';
                     default:
                         return '#00ffff'
@@ -127,7 +127,8 @@
             // Add the reachability plugin
             var reachabilityControl = L.control.reachability({
                 // add settings here
-                apiKey: '5b3ce3597851110001cf6248c9f85cae50384963b985be5b9d179444', // PLEASE REGISTER WITH OPENROUTESERVICE FOR YOUR OWN KEY!
+                apiKey: '5b3ce3597851110001cf62485b23d7db05614119be52f05816c4e30c',
+                visible: true,
                 styleFn: styleIsolines,
                 mouseOverFn: highlightIsolines,
                 mouseOutFn: resetIsolines,
@@ -160,16 +161,20 @@
                 
                 showInterval: true,
                 
-                rangeControlDistance: [1,2,5,10,15,30,50]
+                rangeControlDistance: [1,2,5,10,15,20,30]
             }).addTo(map);
 
             // Setup error handlers in case there is a problem when calling the API
-            map.on('reachability:error', function () {
-                console.error('Unfortunately there has been an error calling the API.\nMore details are available in the console.');
+            map.on('reachability:error', function (e) {
+                console.error('Unfortunately there has been an error calling the API.\nMore details are available in the console.', e);
             });
 
-            map.on('reachability:no_data', function () {
-                console.error('Unfortunately no data was received from the API.\n');
+            map.on('reachability:no_data', function (e) {
+                console.error('Unfortunately no data was received from the API.', e);
+            });
+            
+            map.on("contextmenu", function(e) {
+                console.log("map.contextmenu", e.latlng);
             });
             
             function testApi() {
@@ -177,7 +182,17 @@
                     map.getCenter(),
                     'driving-car',
                     'distance',
-                    [1,2,5,10,15,30,50], 
+                    [1,2,5,10,15,20,30], 
+                    {attributes: '"area","reachfactor","total_pop"', smoothing: 0, rangeControlDistanceUnits: 'km'}
+                );
+            }
+            
+            function testApi2() {
+                reachabilityControl.callApi(
+                    [map.getCenter(), {lat: 44.34837747687981, lng: 9.227907484651084}],
+                    'driving-car',
+                    'distance',
+                    [1,2,5,10,15,20,30], 
                     {attributes: '"area","reachfactor","total_pop"', smoothing: 0, rangeControlDistanceUnits: 'km'}
                 );
             }

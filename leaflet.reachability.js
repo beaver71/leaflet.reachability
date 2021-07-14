@@ -16,6 +16,7 @@ L.Control.Reachability = L.Control.extend({
         zIndexMouseMarker: 9000,                                                    // Needs to be greater than any other layer in the map - this is an invisible marker tied to the mouse pointer when the control is activated to prevent clicks interacting with other map objects
 
         // Main control settings and styling
+        visible: true,
         collapsed: true,                                                            // Operates in a similar way to the Leaflet layer control - can be collapsed into a standard single control which expands on-click (true) or is displayed fully expanded (false)
         controlContainerStyleClass: '',                                             // The container for the plugin control will usually be styled with the standard Leaflet control styling, however this option allows for customisation
         drawActiveMouseClass: 'leaflet-crosshair',                                  // CSS class applied to the mouse pointer when the plugin is in draw mode
@@ -138,6 +139,8 @@ L.Control.Reachability = L.Control.extend({
         // Main container for the control - this is added to the map in the Leaflet control pane
         this._container = L.DomUtil.create('div', 'leaflet-bar ' + this.options.controlContainerStyleClass);
         L.DomEvent.disableClickPropagation(this._container);
+        
+        this._container.hidden = !this.options.visible;
 
         // Create the components for the user interface
         this._createUI();
@@ -625,7 +628,7 @@ L.Control.Reachability = L.Control.extend({
         if (!this._drawRequestRegistered) {
             this._drawRequestRegistered = true;
             
-            var rangeType= (this._rangeIsDistance == true ? 'distance' : 'time');
+            var rangeType = (this._rangeIsDistance == true ? 'distance' : 'time');
             this.callApi(e.latlng, this._travelMode, rangeType, this._getRange(), this.options);
         }
     },
@@ -685,15 +688,62 @@ L.Control.Reachability = L.Control.extend({
         }
         return arrRange;
     },
+    
+    _addMarker: function(latLng, rangeType) {
+        var context = this;
+        var originMarker;
+
+        if (context.options.markerFn != null) {
+            // Expecting a custom Leaflet marker to be returned for the origin of the isolines group.
+            // Passing the relevant factors to the function so that styling can be based on mode of travel, distance or time etc.
+            originMarker = context.options.markerFn(latLng, context._travelMode, rangeType);
+        }
+        else {
+            // Create a default marker for the origin of the isolines group
+            originMarker = L.circleMarker(latLng, { radius: 3, weight: 0, fillColor: '#0073d4', fillOpacity: 1 });
+        }
+
+        // Attach events if required
+        originMarker.on({
+            mouseover: (function (e) { if (context.options.markerOverFn != null) context.options.markerOverFn(e) }),
+            mouseout: (function (e) { if (context.options.markerOutFn != null) context.options.markerOutFn(e) }),
+            click: (function(e) {
+                if (context._deleteMode) {
+                    // If we're in delete mode, call the delete function
+                    L.DomEvent.stopPropagation(e);
+                    context._delete(e);
+                }
+                else {
+                    // Otherwise, if there is a user-defined click function, call that instead
+                    if (context.options.markerClickFn != null) context.options.markerClickFn(e);
+                }
+            })
+        });
+
+        // Add the marker to the isolines GeoJSON
+        originMarker.addTo(context.latestIsolines);
+    },
 
     // Main function to make the actual call to the API and display the resultant isoline group on the map
     callApi: function (latLng, travelMode, rangeType, arrRange, _options) {
         // Store the context for use within the API callback
         var context = this;
+        context._rangeIsDistance = (rangeType == 'distance') ? true : false;
 
         if (window.XMLHttpRequest) {
+            
+            var latLngStr = '';
+            if (Array.isArray(latLng)) {
+                for (var k in latLng) {
+                    latLngStr += '[' + latLng[k].lng + ',' + latLng[k].lat + '],';
+                }
+                latLngStr = latLngStr.slice(0,-1);
+            } else {
+                latLngStr = '[' + latLng.lng + ',' + latLng.lat + ']';
+            }
+            
             // Start setting up the body of the request which contains most of the parameters
-            var requestBody = '{"locations":[[' + latLng.lng + ',' + latLng.lat + ']],"attributes":[' + _options.attributes + '],"smoothing":' + _options.smoothing + ',';
+            var requestBody = '{"locations":['+latLngStr+'],"attributes":[' + _options.attributes + '],"smoothing":' + _options.smoothing + ',';
 
             if (rangeType == 'distance') {
                 requestBody += '"range_type":"distance","units":"' + _options.rangeControlDistanceUnits + '"';
@@ -807,37 +857,15 @@ L.Control.Reachability = L.Control.extend({
 
                                 // Create a marker at the latlng if desired. Can be used to indicate the mode of travel etc.
                                 if (context.options.showOriginMarker) {
-                                    var originMarker;
-
-                                    if (context.options.markerFn != null) {
-                                        // Expecting a custom Leaflet marker to be returned for the origin of the isolines group.
-                                        // Passing the relevant factors to the function so that styling can be based on mode of travel, distance or time etc.
-                                        originMarker = context.options.markerFn(latLng, context._travelMode, rangeType);
+                                    
+                                    if (Array.isArray(latLng)) {
+                                        for (var k in latLng) {
+                                            context._addMarker(latLng[k], travelMode);
+                                        }
+                                    } else {
+                                        context._addMarker(latLng, travelMode);
                                     }
-                                    else {
-                                        // Create a default marker for the origin of the isolines group
-                                        originMarker = L.circleMarker(latLng, { radius: 3, weight: 0, fillColor: '#0073d4', fillOpacity: 1 });
-                                    }
-
-                                    // Attach events if required
-                                    originMarker.on({
-                                        mouseover: (function (e) { if (context.options.markerOverFn != null) context.options.markerOverFn(e) }),
-                                        mouseout: (function (e) { if (context.options.markerOutFn != null) context.options.markerOutFn(e) }),
-                                        click: (function(e) {
-                                            if (context._deleteMode) {
-                                                // If we're in delete mode, call the delete function
-                                                L.DomEvent.stopPropagation(e);
-                                                context._delete(e);
-                                            }
-                                            else {
-                                                // Otherwise, if there is a user-defined click function, call that instead
-                                                if (context.options.markerClickFn != null) context.options.markerClickFn(e);
-                                            }
-                                        })
-                                    });
-
-                                    // Add the marker to the isolines GeoJSON
-                                    originMarker.addTo(context.latestIsolines);
+                                    
                                 }
 
                                 // Add the newly created isolines GeoJSON to the overall GeoJSON FeatureGroup
@@ -877,14 +905,14 @@ L.Control.Reachability = L.Control.extend({
                         // Get ready to register another draw request
                         context._drawRequestRegistered = false;
                     }
-                }
-                catch(e) {
+                } catch(e) {
                     // Unexpected error
+                    console.log('Leaflet.reachability: error', e);
                     context._handleError({
                         message: 'Leaflet.reachability.js unexpected error attempting to call API. Details of the error below.\n' + e,
                         requestResult: null,
                         context: context,
-                        events: ['error','no_data','api_call_end']
+                        events: ['error','unexpexted_error','api_call_end']
                     });
                 }
             };
